@@ -88,3 +88,8 @@ sequence: str
 disorder_mask: str
 bfactor: list[float]
 ```
+# Загрукзка полных обработанных датасетов с S3
+
+```
+dvc pull
+```
