@@ -2,11 +2,12 @@
 
 Проект скачивает сырые данные из внешних источников и складывает их в `data/raw`.
 
-Сейчас есть два пайплайна:
+Сейчас есть несколько пайплайнов:
 
 - `pipeline/download_pdb_mmcif.nf` — структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`).
 - `pipeline/download_disprot.nf` — текущий TSV export DisProt.
-- `pipeline/download_uniprot_sequence_with_disorder.nf` — FASTA-последовательность белка из UniProt и процент disorder из DisProt.
+- `pipeline/build_disprot_sequence_disorder_dataset.nf` — датасет `[последовательность, disorder процент]` для белков из DisProt.
+- `pipeline/download_uniprot_sequence_with_disorder.nf` — FASTA-последовательность и disorder-процент для одного белка, удобен для проверки.
 
 ## Установка Nextflow
 
@@ -106,7 +107,45 @@ nextflow run pipeline/download_disprot.nf \
 
 ## UniProt последовательность + disorder процент
 
-Скачать полную FASTA-последовательность белка и посчитать для него процент disorder по таблице DisProt:
+Собрать датасет для всех уникальных белков из DisProt:
+
+```bash
+nextflow run pipeline/build_disprot_sequence_disorder_dataset.nf
+```
+
+Для быстрой проверки можно ограничить число белков:
+
+```bash
+nextflow run pipeline/build_disprot_sequence_disorder_dataset.nf --limit 100
+```
+
+Пайплайн читает DisProt TSV отсюда:
+
+```text
+data/raw/disprot/disprot_current_idpo_go.tsv
+```
+
+Скачанные FASTA сохраняются сюда:
+
+```text
+data/raw/uniprot/
+```
+
+Итоговый датасет будет здесь:
+
+```text
+data/processed/disprot/sequence_disorder_dataset.tsv
+```
+
+В итоговой таблице есть:
+
+- `UniProt ACC` — идентификатор белка.
+- `Sequence` — полная аминокислотная последовательность из UniProt.
+- `Protein Disorder Content` — доля disorder из DisProt.
+- `Disorder percent` — доля disorder в процентах.
+- `Disorder structural regions` — количество disorder-регионов по DisProt.
+
+Для проверки одного конкретного белка можно использовать отдельный пайплайн:
 
 ```bash
 nextflow run pipeline/download_uniprot_sequence_with_disorder.nf --uniprot_acc P03265
