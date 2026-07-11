@@ -114,6 +114,12 @@ https://disprot.org/api/v2/download?format=tsv&release=current&term_ontology=IDP
 data/processed/disprot/disprot_sequence_disorder.parquet
 ```
 
+Если для части UniProt ID не удалось получить последовательность или FASTA оказался пустым, эти белки пропускаются, а причины сохраняются отдельно:
+
+```text
+data/processed/disprot/disprot_sequence_disorder_errors.tsv
+```
+
 Колонки итогового Parquet:
 
 ```text
