@@ -1,0 +1,6 @@
+[core]
+    remote = storage
+['remote "storage"']
+    url = s3://6394e80d9786-admirable-mark
+    endpointurl = https://s3.ru1.storage.beget.cloud
+    use_ssl = true

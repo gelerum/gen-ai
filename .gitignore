@@ -1,5 +1,5 @@
 # Downloaded data
-data/
+data/raw
 
 # Nextflow runtime files
 work/
@@ -21,3 +21,5 @@ dag*.html
 
 
 .venv/
+
+.dvc/config.local
