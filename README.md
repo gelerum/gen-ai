@@ -1,8 +1,11 @@
-# Загрузка RCSB PDB в формате PDBx/mmCIF
+# Загрузка сырых биологических данных
 
-Проект скачивает структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`) и складывает их в `data/raw/rcsb`.
+Проект скачивает сырые данные из внешних источников и складывает их в `data/raw`.
 
-Пайплайн находится в `pipeline/download_pdb_mmcif.nf` и использует `curl` внутри задач Nextflow.
+Сейчас есть два пайплайна:
+
+- `pipeline/download_pdb_mmcif.nf` — структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`).
+- `pipeline/download_disprot.nf` — текущий TSV export DisProt.
 
 ## Установка Nextflow
 
@@ -14,7 +17,7 @@ nextflow info
 
 ```
 
-## Запуск
+## RCSB PDBx/mmCIF
 
 Скачать весь доступный архив PDBx/mmCIF:
 
@@ -70,4 +73,32 @@ data/raw/
 
 ```text
 data/raw/rcsb/ab/1abc.cif.gz
+```
+
+## DisProt
+
+Скачать текущую выгрузку DisProt в TSV:
+
+```bash
+nextflow run pipeline/download_disprot.nf
+```
+
+По умолчанию используется ссылка:
+
+```text
+https://disprot.org/api/v2/download?format=tsv&release=current&term_ontology=IDPO&term_ontology=GO
+```
+
+Файл будет сохранен сюда:
+
+```text
+data/raw/disprot/disprot_current_idpo_go.tsv
+```
+
+Переопределить URL или имя файла:
+
+```bash
+nextflow run pipeline/download_disprot.nf \
+  --disprot_url 'https://disprot.org/api/v2/download?format=tsv&release=current&term_ontology=IDPO&term_ontology=GO' \
+  --disprot_filename disprot_current_idpo_go.tsv
 ```
