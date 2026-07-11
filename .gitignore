@@ -1,0 +1,20 @@
+# Downloaded data
+data/
+
+# Nextflow runtime files
+work/
+.nextflow/
+.nextflow.log*
+.nextflow.history
+timeline*.html
+report*.html
+trace*.txt
+dag*.html
+
+# Temporary files
+*.tmp
+*.part
+*.download
+
+# macOS
+.DS_Store
