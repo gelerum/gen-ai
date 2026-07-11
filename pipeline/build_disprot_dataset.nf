@@ -130,11 +130,12 @@ process downloadFastaAndBuildRow {
     tuple val(acc), val(organism), val(taxonomy_id), val(starts), val(ends), val(sequence_outdir)
 
     output:
-    path "${acc}.dataset_row.tsv"
+    path "${acc}.dataset_row.tsv", emit: rows
+    path "${acc}.dataset_error.tsv", emit: errors
 
     script:
     """
-set -euo pipefail
+set -uo pipefail
 
 mkdir -p "${sequence_outdir}"
 
@@ -142,12 +143,21 @@ fasta="${sequence_outdir}/${acc}.fasta"
 fasta_tmp="\${fasta}.tmp.\$\$"
 url="${params.uniprot_base_url}/${acc}.fasta"
 
+touch "${acc}.dataset_row.tsv"
+touch "${acc}.dataset_error.tsv"
+
 if [ ! -s "\$fasta" ]; then
     curl --fail --location --silent --show-error \\
         --retry ${params.retries} \\
         --max-time ${params.curl_timeout} \\
         --output "\$fasta_tmp" \\
         "\$url"
+    curl_status=\$?
+    if [ "\$curl_status" -ne 0 ]; then
+        rm -f "\$fasta_tmp"
+        printf '%s\\t%s\\t%s\\n' "${acc}" "curl_failed" "\$url" > "${acc}.dataset_error.tsv"
+        exit 0
+    fi
     mv "\$fasta_tmp" "\$fasta"
 fi
 
@@ -168,6 +178,12 @@ with open("${sequence_outdir}/${acc}.fasta") as handle:
             sequence_parts.append(line)
 
 sequence = "".join(sequence_parts)
+if not sequence:
+    with open(f"{acc}.dataset_error.tsv", "w", newline="") as handle:
+        writer = csv.writer(handle, delimiter="\\t", lineterminator="\\n")
+        writer.writerow([acc, "empty_fasta", f"${sequence_outdir}/{acc}.fasta"])
+    raise SystemExit(0)
+
 mask = ["0"] * len(sequence)
 
 for start, end in zip(starts, ends):
@@ -188,6 +204,7 @@ process writeParquetDataset {
 
     input:
     path rows
+    path errors
     val(dataset_outdir)
     val(dataset_filename)
 
@@ -221,6 +238,8 @@ for row_file in row_files:
     with open(row_file, newline="") as handle:
         reader = csv.reader(handle, delimiter="\\t")
         for values in reader:
+            if not values:
+                continue
             rows.append({
                 "Uniprot_ID": values[0],
                 "organism": values[1],
@@ -245,10 +264,36 @@ table = pa.Table.from_pylist(
 out_path = Path("${dataset_outdir}") / "${dataset_filename}"
 pq.write_table(table, out_path)
 
+errors = []
+error_files = sorted(Path(".").glob("*.dataset_error.tsv"))
+for error_file in error_files:
+    with open(error_file, newline="") as handle:
+        reader = csv.reader(handle, delimiter="\\t")
+        for values in reader:
+            if not values:
+                continue
+            errors.append({
+                "Uniprot_ID": values[0],
+                "error_type": values[1],
+                "detail": values[2] if len(values) > 2 else "",
+            })
+
+error_path = Path("${dataset_outdir}") / "disprot_sequence_disorder_errors.tsv"
+with open(error_path, "w", newline="") as handle:
+    writer = csv.DictWriter(
+        handle,
+        fieldnames=["Uniprot_ID", "error_type", "detail"],
+        delimiter="\\t",
+        lineterminator="\\n",
+    )
+    writer.writeheader()
+    writer.writerows(errors)
+
 with open("disprot_dataset.manifest.tsv", "w", newline="") as handle:
     writer = csv.writer(handle, delimiter="\\t", lineterminator="\\n")
     writer.writerow(["source", "file", "rows"])
     writer.writerow(["disprot_parquet", str(out_path), len(rows)])
+    writer.writerow(["disprot_errors", str(error_path), len(errors)])
 PY
     """
 }
@@ -277,9 +322,13 @@ workflow {
 
     downloadFastaAndBuildRow(protein_rows)
 
-    downloadFastaAndBuildRow.out
+    downloadFastaAndBuildRow.out.rows
         .collect()
         .set { dataset_rows }
 
-    writeParquetDataset(dataset_rows, dataset_outdir, params.dataset_filename)
+    downloadFastaAndBuildRow.out.errors
+        .collect()
+        .set { dataset_errors }
+
+    writeParquetDataset(dataset_rows, dataset_errors, dataset_outdir, params.dataset_filename)
 }
