@@ -1,0 +1,5 @@
+outs:
+- md5: 9a59205a4a6a5a3c39ae00a25b3ac78b
+  size: 2103693
+  hash: md5
+  path: disprot_sequence_disorder.parquet
