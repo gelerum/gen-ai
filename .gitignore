@@ -1,5 +1,5 @@
 # Downloaded data
-data/
+data/raw
 
 # Nextflow runtime files
 work/
@@ -18,3 +18,8 @@ dag*.html
 
 # macOS
 .DS_Store
+
+
+.venv/
+
+.dvc/config.local

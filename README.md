@@ -1,13 +1,8 @@
-# Загрузка биологических данных
+Пайплайн скачивает датасеты из RCSB PDB, DisProt.
 
-Проект содержит Nextflow-пайплайны для загрузки RCSB и DisProt.
+По отдельности обрабатывает каждый датасет, вычленяет нужную информацию из каждого, в каждом информация разная.
 
-Основные пайплайны:
-
-- `pipeline/download_pdb_mmcif.nf` — структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`).
-- `pipeline/build_disprot_dataset.nf` — полный DisProt dataset: TSV DisProt -> FASTA UniProt -> binary disorder mask -> Parquet.
-
-## Установка Nextflow
+# Установка Nextflow
 
 ```bash
 conda create --name nf-env -c bioconda -c conda-forge nextflow pyarrow
@@ -16,6 +11,14 @@ nextflow info
 ```
 
 ## RCSB PDBx/mmCIF
+nextflow info # для проверки
+```
+
+# Загрузка RCSB PDB в формате PDBx/mmCIF
+
+Проект скачивает структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`) и складывает их в `data/raw/pdb_mmCIF`.
+
+Пайплайн находится в `pipeline/download_pdb_mmcif.nf` и использует `curl` (возможны проблемы при загрузке полного датасета размером в 84 гб! TODO: переписать на rsync) внутри задач Nextflow.
 
 Скачать весь доступный архив PDBx/mmCIF:
 
@@ -60,7 +63,7 @@ nextflow run pipeline/download_pdb_mmcif.nf \
 
 ```text
 data/raw/
-  rcsb/
+  pdb_mmCIF/
     ab/
       1abc.cif.gz
     zz/
