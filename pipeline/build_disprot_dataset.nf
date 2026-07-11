@@ -18,6 +18,7 @@ params.uniprot_outdir = params.uniprot_outdir ?: "${launchDir}/data/raw/uniprot"
 params.dataset_outdir = params.dataset_outdir ?: "${launchDir}/data/processed/disprot"
 params.dataset_filename = params.dataset_filename ?: "disprot_sequence_disorder.parquet"
 params.uniprot_base_url = params.uniprot_base_url ?: "https://rest.uniprot.org/uniprotkb"
+params.disprot_script = params.disprot_script ?: "${launchDir}/preprocessing/build_disprot_dataset.py"
 params.limit = params.limit ?: 0
 params.max_forks = params.max_forks ?: 6
 params.retries = params.retries ?: 3
@@ -63,62 +64,10 @@ process extractDisprotProteins {
     """
 set -euo pipefail
 
-python - <<'PY'
-import csv
-
-proteins = {}
-
-with open("${disprot_tsv}", newline="") as handle:
-    reader = csv.DictReader(handle, delimiter="\\t")
-    for row in reader:
-        acc = row["UniProt ACC"].strip()
-        if not acc:
-            continue
-
-        item = proteins.setdefault(acc, {
-            "Uniprot_ID": acc,
-            "organism": row["Organism"],
-            "taxonomy_id": row["NCBI Taxon ID"],
-            "starts": [],
-            "ends": [],
-        })
-
-        is_disorder = (
-            row["Term namespace"] == "Structural state"
-            and row["Term name"] == "disorder"
-        )
-        if is_disorder:
-            try:
-                start = int(row["Start"])
-                end = int(row["End"])
-            except ValueError:
-                continue
-            if start > 0 and end >= start:
-                item["starts"].append(start)
-                item["ends"].append(end)
-
-rows = sorted(proteins.values(), key=lambda x: x["Uniprot_ID"])
-limit = int("${params.limit}")
-if limit > 0:
-    rows = rows[:limit]
-
-with open("disprot_proteins.tsv", "w", newline="") as handle:
-    writer = csv.DictWriter(
-        handle,
-        fieldnames=["Uniprot_ID", "organism", "taxonomy_id", "starts", "ends"],
-        delimiter="\\t",
-        lineterminator="\\n",
-    )
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({
-            "Uniprot_ID": row["Uniprot_ID"],
-            "organism": row["organism"],
-            "taxonomy_id": row["taxonomy_id"],
-            "starts": ",".join(map(str, row["starts"])),
-            "ends": ",".join(map(str, row["ends"])),
-        })
-PY
+python "${params.disprot_script}" extract-proteins \\
+    --disprot-tsv "${disprot_tsv}" \\
+    --out disprot_proteins.tsv \\
+    --limit ${params.limit}
     """
 }
 
@@ -161,41 +110,15 @@ if [ ! -s "\$fasta" ]; then
     mv "\$fasta_tmp" "\$fasta"
 fi
 
-python - <<'PY'
-import csv
-
-acc = "${acc}"
-organism = "${organism}"
-taxonomy_id = "${taxonomy_id}"
-starts = [int(x) for x in "${starts}".split(",") if x and x != "null"]
-ends = [int(x) for x in "${ends}".split(",") if x and x != "null"]
-
-sequence_parts = []
-with open("${sequence_outdir}/${acc}.fasta") as handle:
-    for line in handle:
-        line = line.strip()
-        if line and not line.startswith(">"):
-            sequence_parts.append(line)
-
-sequence = "".join(sequence_parts)
-if not sequence:
-    with open(f"{acc}.dataset_error.tsv", "w", newline="") as handle:
-        writer = csv.writer(handle, delimiter="\\t", lineterminator="\\n")
-        writer.writerow([acc, "empty_fasta", f"${sequence_outdir}/{acc}.fasta"])
-    raise SystemExit(0)
-
-mask = ["0"] * len(sequence)
-
-for start, end in zip(starts, ends):
-    left = max(start, 1) - 1
-    right = min(end, len(sequence))
-    for idx in range(left, right):
-        mask[idx] = "1"
-
-with open(f"{acc}.dataset_row.tsv", "w", newline="") as handle:
-    writer = csv.writer(handle, delimiter="\\t", lineterminator="\\n")
-    writer.writerow([acc, organism, taxonomy_id, sequence, "".join(mask)])
-PY
+python "${params.disprot_script}" build-row \\
+    --acc "${acc}" \\
+    --organism "${organism}" \\
+    --taxonomy-id "${taxonomy_id}" \\
+    --starts "${starts}" \\
+    --ends "${ends}" \\
+    --fasta "\$fasta" \\
+    --row-out "${acc}.dataset_row.tsv" \\
+    --error-out "${acc}.dataset_error.tsv"
     """
 }
 
@@ -217,84 +140,12 @@ set -euo pipefail
 
 mkdir -p "${dataset_outdir}"
 
-python - <<'PY'
-import csv
-import sys
-from pathlib import Path
-
-try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-except ImportError:
-    sys.stderr.write(
-        "pyarrow is required to write Parquet. Install it in the Nextflow environment, "
-        "for example: conda install -c conda-forge pyarrow\\n"
-    )
-    raise
-
-rows = []
-row_files = sorted(Path(".").glob("*.dataset_row.tsv"))
-for row_file in row_files:
-    with open(row_file, newline="") as handle:
-        reader = csv.reader(handle, delimiter="\\t")
-        for values in reader:
-            if not values:
-                continue
-            rows.append({
-                "Uniprot_ID": values[0],
-                "organism": values[1],
-                "taxonomy_id": values[2],
-                "sequence": values[3],
-                "disorder_mask": values[4],
-            })
-
-rows.sort(key=lambda item: item["Uniprot_ID"])
-
-table = pa.Table.from_pylist(
-    rows,
-    schema=pa.schema([
-        ("Uniprot_ID", pa.string()),
-        ("organism", pa.string()),
-        ("taxonomy_id", pa.string()),
-        ("sequence", pa.string()),
-        ("disorder_mask", pa.string()),
-    ]),
-)
-
-out_path = Path("${dataset_outdir}") / "${dataset_filename}"
-pq.write_table(table, out_path)
-
-errors = []
-error_files = sorted(Path(".").glob("*.dataset_error.tsv"))
-for error_file in error_files:
-    with open(error_file, newline="") as handle:
-        reader = csv.reader(handle, delimiter="\\t")
-        for values in reader:
-            if not values:
-                continue
-            errors.append({
-                "Uniprot_ID": values[0],
-                "error_type": values[1],
-                "detail": values[2] if len(values) > 2 else "",
-            })
-
-error_path = Path("${dataset_outdir}") / "disprot_sequence_disorder_errors.tsv"
-with open(error_path, "w", newline="") as handle:
-    writer = csv.DictWriter(
-        handle,
-        fieldnames=["Uniprot_ID", "error_type", "detail"],
-        delimiter="\\t",
-        lineterminator="\\n",
-    )
-    writer.writeheader()
-    writer.writerows(errors)
-
-with open("disprot_dataset.manifest.tsv", "w", newline="") as handle:
-    writer = csv.writer(handle, delimiter="\\t", lineterminator="\\n")
-    writer.writerow(["source", "file", "rows"])
-    writer.writerow(["disprot_parquet", str(out_path), len(rows)])
-    writer.writerow(["disprot_errors", str(error_path), len(errors)])
-PY
+python "${params.disprot_script}" write-parquet \\
+    --rows-dir . \\
+    --errors-dir . \\
+    --out "${dataset_outdir}/${dataset_filename}" \\
+    --errors-out "${dataset_outdir}/disprot_sequence_disorder_errors.tsv" \\
+    --manifest disprot_dataset.manifest.tsv
     """
 }
 
