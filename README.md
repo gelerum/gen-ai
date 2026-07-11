@@ -6,6 +6,7 @@
 
 - `pipeline/download_pdb_mmcif.nf` — структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`).
 - `pipeline/download_disprot.nf` — текущий TSV export DisProt.
+- `pipeline/download_uniprot_sequence_with_disorder.nf` — FASTA-последовательность белка из UniProt и процент disorder из DisProt.
 
 ## Установка Nextflow
 
@@ -101,4 +102,38 @@ data/raw/disprot/disprot_current_idpo_go.tsv
 nextflow run pipeline/download_disprot.nf \
   --disprot_url 'https://disprot.org/api/v2/download?format=tsv&release=current&term_ontology=IDPO&term_ontology=GO' \
   --disprot_filename disprot_current_idpo_go.tsv
+```
+
+## UniProt последовательность + disorder процент
+
+Скачать полную FASTA-последовательность белка и посчитать для него процент disorder по таблице DisProt:
+
+```bash
+nextflow run pipeline/download_uniprot_sequence_with_disorder.nf --uniprot_acc P03265
+```
+
+По умолчанию пайплайн читает DisProt TSV отсюда:
+
+```text
+data/raw/disprot/disprot_current_idpo_go.tsv
+```
+
+Результаты будут сохранены сюда:
+
+```text
+data/raw/uniprot/P03265.fasta
+data/processed/disprot/P03265_disorder_summary.tsv
+```
+
+В summary-файле есть:
+
+- `Sequence length FASTA` — длина полной последовательности из UniProt.
+- `Protein Disorder Content` — доля disorder из DisProt.
+- `Disorder percent` — та же доля в процентах.
+- `Disorder structural regions` — сколько строк DisProt для этого белка имеют `Term namespace = Structural state` и `Term name = disorder`.
+
+Для другого белка достаточно заменить UniProt accession:
+
+```bash
+nextflow run pipeline/download_uniprot_sequence_with_disorder.nf --uniprot_acc P49913
 ```
