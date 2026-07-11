@@ -1,6 +1,6 @@
 # Загрузка RCSB PDB в формате PDBx/mmCIF
 
-Проект скачивает структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`) и складывает их в `data/raw`.
+Проект скачивает структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`) и складывает их в `data/raw/rcsb`.
 
 Пайплайн находится в `pipeline/download_pdb_mmcif.nf` и использует `curl` внутри задач Nextflow.
 
@@ -40,14 +40,14 @@ nextflow run pipeline/download_pdb_mmcif.nf --ids pdb_ids.txt
 
 ```bash
 nextflow run pipeline/download_pdb_mmcif.nf \
-  --outdir data/raw \
+  --outdir data/raw/rcsb \
   --chunk_size 500 \
   --max_forks 6
 ```
 
 Основные параметры:
 
-- `--outdir` — папка для скачанных `.cif.gz`, по умолчанию `data/raw`.
+- `--outdir` — папка для скачанных `.cif.gz`, по умолчанию `data/raw/rcsb`.
 - `--ids` — файл со списком PDB ID.
 - `--limit` — скачать только первые N структур, удобно для проверки.
 - `--chunk_size` — сколько PDB ID обрабатывает одна задача Nextflow.
@@ -59,14 +59,15 @@ nextflow run pipeline/download_pdb_mmcif.nf \
 
 ```text
 data/raw/
-  ab/
-    1abc.cif.gz
-  zz/
-    9zzz.cif.gz
+  rcsb/
+    ab/
+      1abc.cif.gz
+    zz/
+      9zzz.cif.gz
 ```
 
 Например, структура `1abc` будет сохранена как:
 
 ```text
-data/raw/ab/1abc.cif.gz
+data/raw/rcsb/ab/1abc.cif.gz
 ```
