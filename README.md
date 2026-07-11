@@ -5,8 +5,12 @@
 # Установка Nextflow
 
 ```bash
-conda create --name nf-env bioconda::nextflow
+conda create --name nf-env -c bioconda -c conda-forge nextflow pyarrow
 source activate nf-env
+nextflow info
+```
+
+## RCSB PDBx/mmCIF
 nextflow info # для проверки
 ```
 
@@ -72,24 +76,61 @@ data/raw/
 data/raw/rcsb/ab/1abc.cif.gz
 ```
 
-# Обработка RCSB/PDB
+## DisProt Parquet dataset
+
+Собрать итоговый датасет из DisProt:
 
 ```bash
-nextflow run pipeline/extract_pdb_features.nf
+nextflow run pipeline/build_disprot_dataset.nf
 ```
 
-Эта команда создаст таблицу в папке `data/processed/pdb_protein_features.parquet` со следующими столбцами:
+Для быстрой проверки можно ограничить число белков:
 
+```bash
+nextflow run pipeline/build_disprot_dataset.nf --limit 100
 ```
-pdb_id: str
-organism: str
-taxonomy_id: str	
-sequence: str	
-disorder_mask: str
-bfactor: list[float]
-```
-# Загрукзка полных обработанных датасетов с S3
 
+Пайплайн делает все шаги сам:
+
+1. Скачивает текущий DisProt TSV.
+2. Берет уникальные `UniProt ACC`.
+3. Скачивает FASTA-последовательности из UniProt.
+4. Строит бинарную маску disorder.
+5. Сохраняет итоговый датасет в Parquet.
+
+Сырые данные сохраняются сюда:
+
+```text
+data/raw/disprot/disprot_current_idpo_go.tsv
+data/raw/uniprot/
 ```
-dvc pull
+
+По умолчанию используется DisProt URL:
+
+```text
+https://disprot.org/api/v2/download?format=tsv&release=current&term_ontology=IDPO&term_ontology=GO
 ```
+
+Итоговый файл:
+
+```text
+data/processed/disprot/disprot_sequence_disorder.parquet
+```
+
+Если для части UniProt ID не удалось получить последовательность или FASTA оказался пустым, эти белки пропускаются, а причины сохраняются отдельно:
+
+```text
+data/processed/disprot/disprot_sequence_disorder_errors.tsv
+```
+
+Колонки итогового Parquet:
+
+```text
+Uniprot_ID
+organism
+taxonomy_id
+sequence
+disorder_mask
+```
+
+`disorder_mask` — строка той же длины, что и `sequence`: `1` означает disorder-позицию, `0` означает order/не размечено как disorder.
