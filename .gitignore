@@ -18,3 +18,6 @@ dag*.html
 
 # macOS
 .DS_Store
+
+
+.venv/
