@@ -8,10 +8,10 @@ nextflow.enable.dsl = 2
  * Examples:
  *   nextflow run pipeline/download_pdb_mmcif.nf
  *   nextflow run pipeline/download_pdb_mmcif.nf --limit 100
- *   nextflow run pipeline/download_pdb_mmcif.nf --ids pdb_ids.txt --outdir data/raw
+ *   nextflow run pipeline/download_pdb_mmcif.nf --ids pdb_ids.txt --outdir data/raw/rcsb
  */
 
-params.outdir = params.outdir ?: "${launchDir}/data/raw"
+params.outdir = params.outdir ?: "${launchDir}/data/raw/rcsb"
 params.ids = params.ids ?: null
 params.limit = params.limit ?: 0
 params.chunk_size = params.chunk_size ?: 200
