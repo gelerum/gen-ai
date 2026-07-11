@@ -1,20 +1,20 @@
-# Загрузка RCSB PDB в формате PDBx/mmCIF
+Пайплайн скачивает датасеты из RCSB PDB, DisProt.
 
-Проект скачивает структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`) и складывает их в `data/raw/rcsb`.
+По отдельности обрабатывает каждый датасет, вычленяет нужную информацию из каждого, в каждом информация разная.
 
-Пайплайн находится в `pipeline/download_pdb_mmcif.nf` и использует `curl` внутри задач Nextflow.
-
-## Установка Nextflow
+# Установка Nextflow
 
 ```bash
 conda create --name nf-env bioconda::nextflow
 source activate nf-env
-nextflow info
-
-
+nextflow info # для проверки
 ```
 
-## Запуск
+# Загрузка RCSB PDB в формате PDBx/mmCIF
+
+Проект скачивает структуры RCSB/wwPDB в формате PDBx/mmCIF (`.cif.gz`) и складывает их в `data/raw/pdb_mmCIF`.
+
+Пайплайн находится в `pipeline/download_pdb_mmcif.nf` и использует `curl` (возможны проблемы при загрузке полного датасета размером в 84 гб! TODO: переписать на rsync) внутри задач Nextflow.
 
 Скачать весь доступный архив PDBx/mmCIF:
 
@@ -59,7 +59,7 @@ nextflow run pipeline/download_pdb_mmcif.nf \
 
 ```text
 data/raw/
-  rcsb/
+  pdb_mmCIF/
     ab/
       1abc.cif.gz
     zz/
@@ -70,4 +70,21 @@ data/raw/
 
 ```text
 data/raw/rcsb/ab/1abc.cif.gz
+```
+
+# Обработка RCSB/PDB
+
+```bash
+nextflow run pipeline/extract_pdb_features.nf
+```
+
+Эта команда создаст таблицу в папке `data/processed/pdb_protein_features.parquet` со следующими столбцами:
+
+```
+pdb_id: str
+organism: str
+taxonomy_id: str	
+sequence: str	
+disorder_mask: str
+bfactor: list[float]
 ```
