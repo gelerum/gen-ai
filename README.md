@@ -11,8 +11,6 @@ nextflow info
 ```
 
 ## RCSB PDBx/mmCIF
-nextflow info # для проверки
-```
 
 # Загрузка RCSB PDB в формате PDBx/mmCIF
 
