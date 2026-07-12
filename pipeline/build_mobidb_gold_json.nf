@@ -3,9 +3,9 @@
 nextflow.enable.dsl = 2
 
 /*
- * Download MobiDB Gold JSON Lines archive (.mjson.gz) and convert it to JSON.
+ * Download MobiDB Gold JSON Lines archive (.mjson.gz) and convert it to Parquet.
  *
- * Default output is a compact per-protein JSON dataset with sequence,
+ * Default output is a compact per-protein Parquet dataset with sequence,
  * curated disorder regions, and a sequence-aligned 0/1 disorder mask.
  *
  * Examples:
@@ -17,7 +17,7 @@ params.mobidb_url = params.mobidb_url ?: "https://protein.bio.unipd.it/shared/mo
 params.mobidb_outdir = params.mobidb_outdir ?: "${launchDir}/data/raw/mobidb"
 params.mobidb_filename = params.mobidb_filename ?: "mobidb_gold_2022_07.mjson.gz"
 params.mobidb_dataset_outdir = params.mobidb_dataset_outdir ?: "${launchDir}/data/processed/mobidb"
-params.mobidb_dataset_filename = params.mobidb_dataset_filename ?: "mobidb_gold_2022_07.json"
+params.mobidb_dataset_filename = params.mobidb_dataset_filename ?: "mobidb_gold_2022_07.parquet"
 params.mobidb_script = params.mobidb_script ?: "${launchDir}/preprocessing/build_mobidb_gold_json.py"
 params.mobidb_mode = params.mobidb_mode ?: "dataset"
 params.mobidb_disorder_key = params.mobidb_disorder_key ?: "curated-disorder-merge"

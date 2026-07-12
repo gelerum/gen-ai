@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Convert a MobiDB Gold .mjson.gz archive to JSON.
+"""Convert a MobiDB Gold .mjson.gz archive to Parquet.
 
 The source archive is gzip-compressed JSON Lines: each line is one MobiDB
 protein record. This script keeps processing streaming-friendly and can write
 either:
 
-* a compact sequence/disorder dataset with one JSON object per protein;
-* a full JSON array containing the original records.
+* a compact sequence/disorder dataset with one typed row per protein;
+* a full dump keeping each original record as a JSON string column.
+
+Output is a single Parquet file written in batches so the whole archive never
+has to be held in memory.
 """
 from __future__ import annotations
 
@@ -17,6 +20,9 @@ import json
 import sys
 from pathlib import Path
 from typing import Any, Iterator
+
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 
 DEFAULT_DISORDER_KEY = "curated-disorder-merge"
@@ -255,25 +261,69 @@ def compact_record(
     }
 
 
-def write_json_array(
+def dataset_schema(variant_names: list[str]) -> pa.Schema:
+    """Build the Arrow schema for the compact per-protein dataset."""
+    variant_struct = pa.struct(
+        [
+            ("sources", pa.list_(pa.string())),
+            ("regions", pa.list_(pa.list_(pa.int32()))),
+            ("content_count", pa.int32()),
+            ("content_fraction", pa.float64()),
+            ("mask", pa.string()),
+        ]
+    )
+    masks_struct = pa.struct([(name, variant_struct) for name in variant_names])
+    return pa.schema(
+        [
+            ("Uniprot_ID", pa.string()),
+            ("mobidb_id", pa.string()),
+            ("organism", pa.string()),
+            ("taxonomy_id", pa.string()),
+            ("length", pa.int32()),
+            ("sequence", pa.string()),
+            ("primary_disorder_variant", pa.string()),
+            ("disorder_masks", masks_struct),
+            ("disorder_source", pa.string()),
+            ("disorder_sources", pa.list_(pa.string())),
+            ("disorder_regions", pa.list_(pa.list_(pa.int32()))),
+            ("disorder_content_count", pa.int32()),
+            ("disorder_content_fraction", pa.float64()),
+            ("disorder_mask", pa.string()),
+        ]
+    )
+
+
+def full_schema() -> pa.Schema:
+    """Schema for the full dump: one JSON string per original record."""
+    return pa.schema([("record", pa.string())])
+
+
+def write_parquet(
     records: Iterator[dict[str, Any]],
     out_path: Path,
+    schema: pa.Schema,
     progress_log: Path | None = None,
     progress_every: int = 10_000,
+    batch_size: int = 2_000,
 ) -> int:
-    """Write records as one valid JSON array without materializing all rows."""
+    """Stream records into a single Parquet file, one batch at a time."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     count = 0
-    with out_path.open("w", encoding="utf-8") as handle:
-        handle.write("[\n")
+    batch: list[dict[str, Any]] = []
+    writer = pq.ParquetWriter(out_path, schema, compression="zstd")
+    try:
         for record in records:
-            if count:
-                handle.write(",\n")
-            json.dump(record, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            batch.append(record)
             count += 1
+            if len(batch) >= batch_size:
+                writer.write_table(pa.Table.from_pylist(batch, schema=schema))
+                batch.clear()
             if progress_every > 0 and count % progress_every == 0:
                 log_progress(f"[convertMobidbGoldToJson] converted {count} records", progress_log)
-        handle.write("\n]\n")
+        if batch:
+            writer.write_table(pa.Table.from_pylist(batch, schema=schema))
+    finally:
+        writer.close()
     log_progress(f"[convertMobidbGoldToJson] converted {count} records total", progress_log)
     return count
 
@@ -298,15 +348,20 @@ def convert(args: argparse.Namespace) -> int:
     disorder_variants = parse_disorder_variants(variants_value or DEFAULT_DISORDER_VARIANTS)
 
     if args.mode == "full":
-        records = iter_records(in_path)
+        schema = full_schema()
+        records = (
+            {"record": json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))}
+            for record in iter_records(in_path)
+        )
     else:
+        schema = dataset_schema(list(disorder_variants.keys()))
         records = (
             compact_record(record, disorder_variants, args.primary_disorder_variant)
             for record in iter_records(in_path)
         )
 
     log_progress(f"[convertMobidbGoldToJson] converting {in_path} to {out_path}", progress_log)
-    rows = write_json_array(records, out_path, progress_log=progress_log)
+    rows = write_parquet(records, out_path, schema, progress_log=progress_log)
     write_manifest(manifest_path, in_path, out_path, args.mode, rows, disorder_variants)
     return 0
 
@@ -314,7 +369,7 @@ def convert(args: argparse.Namespace) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, help="MobiDB .mjson or .mjson.gz archive")
-    parser.add_argument("--out", required=True, help="output .json path")
+    parser.add_argument("--out", required=True, help="output .parquet path")
     parser.add_argument("--manifest", default="mobidb_gold_json.manifest.tsv")
     parser.add_argument(
         "--mode",
