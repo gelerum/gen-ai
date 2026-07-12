@@ -9,10 +9,10 @@ protein (unique SEQRES sequence in a file). Columns:
                                   expression host); null if unknown
     taxonomy_id    string        NCBI taxonomy id; null if unknown
     sequence       string        full SEQRES, one letter per residue
-    disorder_mask  string        same length; '1' = residue in SEQRES but not
-                                  resolved in the structure (disordered)
+    coverage       string        same length; '1' = residue resolved in the
+                                  structure, '0' = residue missing in coords
     bfactor        list<float32> same length; CA B-factor per residue,
-                                  null where disorder_mask == '1'
+                                  null where coverage == '0'
 
 Chains that share a sequence (homodimer copies) are merged into one row:
 a residue counts as ordered if resolved in ANY copy, and its B-factor is the
@@ -39,7 +39,7 @@ SCHEMA = pa.schema(
         ("organism", pa.string()),
         ("taxonomy_id", pa.string()),
         ("sequence", pa.string()),
-        ("disorder_mask", pa.string()),
+        ("coverage", pa.string()),
         ("bfactor", pa.list_(pa.float32())),
     ]
 )
@@ -79,32 +79,32 @@ def residue_bfactor(residue) -> float:
 
 
 def chain_residue_arrays(polymer, entity):
-    """Return (sequence, mask, bfactor) aligned to the full SEQRES of one chain.
+    """Return (sequence, coverage, bfactor) aligned to the full SEQRES of one chain.
 
-    mask[i] = 1 if residue i is missing from the coordinates (disordered),
+    coverage[i] = 1 if residue i is resolved in coordinates, 0 if it is missing;
     bfactor[i] = its CA B-factor, or None where it is missing. If the entity has
-    no SEQRES, falls back to the modeled residues (all considered ordered).
+    no SEQRES, falls back to the modeled residues (all considered covered).
     """
     seqres = entity.full_sequence if entity is not None else None
     if seqres:
         n = len(seqres)
         sequence = gemmi.one_letter_code(seqres)
-        mask = [1] * n
+        coverage = [0] * n
         bfactor: list[float | None] = [None] * n
         for residue in polymer:
             i = residue.label_seq  # 1-based position in the SEQRES
             if i is None or not (1 <= i <= n):
                 continue
-            mask[i - 1] = 0
+            coverage[i - 1] = 1
             bfactor[i - 1] = residue_bfactor(residue)
-        return sequence, mask, bfactor
+        return sequence, coverage, bfactor
 
     sequence = polymer.make_one_letter_sequence()
-    mask = [0] * len(sequence)
+    coverage = [1] * len(sequence)
     bfactor = [residue_bfactor(residue) for residue in polymer]
     if len(bfactor) != len(sequence):
         return None
-    return sequence, mask, bfactor
+    return sequence, coverage, bfactor
 
 
 @dataclass
@@ -115,14 +115,14 @@ class Protein:
     organism: str | None
     taxonomy_id: str | None
     sequence: str
-    mask: list[int]
+    coverage: list[int]
     bfactor: list[float | None]
 
-    def merge_copy(self, mask, bfactor) -> None:
+    def merge_copy(self, coverage, bfactor) -> None:
         """Fold in another chain with the same sequence (a homodimer copy)."""
-        for i, resolved in enumerate(mask):
-            if resolved == 0:  # residue is present in this copy
-                self.mask[i] = 0
+        for i, covered in enumerate(coverage):
+            if covered == 1:  # residue is present in this copy
+                self.coverage[i] = 1
                 b = bfactor[i]
                 if b is not None:
                     self.bfactor[i] = b if self.bfactor[i] is None else min(self.bfactor[i], b)
@@ -151,12 +151,12 @@ def extract_proteins(path: str):
         arrays = chain_residue_arrays(polymer, entity)
         if arrays is None:
             continue
-        sequence, mask, bfactor = arrays
+        sequence, coverage, bfactor = arrays
         if sequence in by_sequence:
-            by_sequence[sequence].merge_copy(mask, bfactor)
+            by_sequence[sequence].merge_copy(coverage, bfactor)
         else:
             organism, taxid = organisms.get(entity.name, (None, None)) if entity else (None, None)
-            by_sequence[sequence] = Protein(pdb_id, organism, taxid, sequence, mask, bfactor)
+            by_sequence[sequence] = Protein(pdb_id, organism, taxid, sequence, coverage, bfactor)
 
     return list(by_sequence.values()), None
 
@@ -169,7 +169,7 @@ def proteins_to_table(proteins: list[Protein]) -> pa.Table:
             "organism": [p.organism for p in proteins],
             "taxonomy_id": [p.taxonomy_id for p in proteins],
             "sequence": [p.sequence for p in proteins],
-            "disorder_mask": ["".join(map(str, p.mask)) for p in proteins],
+            "coverage": ["".join(map(str, p.coverage)) for p in proteins],
             "bfactor": pa.array([p.bfactor for p in proteins], type=pa.list_(pa.float32())),
         },
         schema=SCHEMA,
@@ -178,7 +178,7 @@ def proteins_to_table(proteins: list[Protein]) -> pa.Table:
 
 def parse_args():
     ap = argparse.ArgumentParser(
-        description="Per-protein dataset (sequence + disorder mask + CA B-factor) from RCSB PDB mmCIF."
+        description="Per-protein dataset (sequence + structural coverage + CA B-factor) from RCSB PDB mmCIF."
     )
     ap.add_argument("--raw", default="data/raw/pdb_mmCIF", help="root of the RCSB PDB mmCIF mirror")
     ap.add_argument("--out", default="data/processed/pdb_protein_features.parquet")
