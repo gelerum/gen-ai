@@ -1,2 +1,3 @@
 /pdb_protein_features.parquet
 /merged_protein_dataset.parquet
+/merged_protein_dataset_clean.parquet
