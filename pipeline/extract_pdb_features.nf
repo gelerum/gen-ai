@@ -6,7 +6,7 @@ nextflow.enable.dsl = 2
  * Stage 2 (RCSB PDB): build the per-protein dataset from the local mmCIF mirror.
  *
  * Runs preprocessing/extract_pdb_features.py over data/raw and publishes a Parquet file
- * (per-protein sequence + disorder mask + CA B-factor) to data/processed.
+ * (per-protein sequence + structural coverage + CA B-factor) to data/processed.
  * Run this after the PDB download pipeline has populated data/raw.
  *
  * Examples:
