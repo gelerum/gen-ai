@@ -128,10 +128,10 @@ Uniprot_ID
 organism
 taxonomy_id
 sequence
-disorder_mask
+coverage
 ```
 
-`disorder_mask` — строка той же длины, что и `sequence`: `1` означает disorder-позицию, `0` означает order/не размечено как disorder.
+`coverage` — строка той же длины, что и `sequence`: `1` означает, что остаток покрыт/разрешён в структуре, `0` означает, что остатка нет в координатах.
 
 ## MobiDB Gold JSON dataset
 
