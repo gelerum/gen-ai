@@ -1,0 +1,5 @@
+outs:
+- md5: a8bc2233dfe209baeb9a2fdb85dad75c
+  size: 287504049
+  hash: md5
+  path: merged_protein_dataset_human_esm2.parquet
