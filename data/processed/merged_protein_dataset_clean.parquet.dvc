@@ -1,0 +1,5 @@
+outs:
+- md5: a62fe48d200a86cd9c417f8519149dfd
+  size: 620064901
+  hash: md5
+  path: merged_protein_dataset_clean.parquet
