@@ -226,3 +226,32 @@ nextflow run pipeline/build_mobidb_gold_json.nf \
 Если нужен полный JSON со всеми исходными MobiDB-полями:
 
 Ноутбук для проверки результата: `notebooks/mobidb_gold_explore.ipynb`.
+
+## Объединённый датасет
+
+Объединить три готовых датасета (DisProt, MobiDB, RCSB PDB) в один Parquet:
+
+```bash
+nextflow run pipeline/merge_datasets.nf
+```
+
+Запускать после того, как отработали пайплайны DisProt, MobiDB и извлечения признаков PDB. Пайплайн читает готовые Parquet из `data/processed` и складывает результат туда же:
+
+```text
+data/processed/merged_protein_dataset.parquet
+```
+
+У источников разные ID и разные признаки, поэтому записи объединяются по общей схеме, а колонка `source` позволяет их различать. Колонки итогового Parquet:
+
+```text
+source         disprot | mobidb | rcsb-pdb
+id             UniProt ACC или PDB ID
+organism
+taxonomy_id
+sequence
+disorder_mask  строка 0/1 длиной как sequence; есть у DisProt и MobiDB, null у PDB
+coverage       строка 0/1 длиной как sequence; есть у RCSB PDB, null у остальных
+bfactor        список float32 длиной как sequence; есть у RCSB PDB, null у остальных
+```
+
+Каждый источник даёт только свои признаки, остальные колонки заполняются `null`.
