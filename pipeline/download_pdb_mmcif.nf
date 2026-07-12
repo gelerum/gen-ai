@@ -29,11 +29,15 @@ process fetchPdbIndex {
 
     script:
     """
+    set -euo pipefail
+
     curl --fail --location --silent --show-error \\
         --retry ${params.retries} \\
         --max-time ${params.curl_timeout} \\
         --output entries.idx \\
         "${params.pdb_index_url}"
+
+    test -s entries.idx
     """
 }
 
@@ -48,14 +52,26 @@ process normalizePdbIds {
 
     script:
     """
+    set -euo pipefail
+
     awk '
         /^[[:space:]]*\$/ { next }
         /^#/ { next }
         /^IDCODE/ { next }
         /^-/ { next }
         {
-            id = tolower(\$1)
-            if (id ~ /^[0-9][a-z0-9]{3}\$/) print id
+            for (idx = 1; idx <= NF; idx++) {
+                token = tolower(\$idx)
+                gsub(/[^a-z0-9]/, " ", token)
+                count = split(token, parts, /[ ]+/)
+                for (part_idx = 1; part_idx <= count; part_idx++) {
+                    id = parts[part_idx]
+                    if (id ~ /^[0-9][a-z0-9][a-z0-9][a-z0-9]\$/) {
+                        print id
+                        next
+                    }
+                }
+            }
         }
     ' "$source_ids" | sort -u > all_ids.txt
 
@@ -63,6 +79,15 @@ process normalizePdbIds {
         head -n ${params.limit} all_ids.txt > pdb_ids.txt
     else
         mv all_ids.txt pdb_ids.txt
+    fi
+
+    if [ ! -s pdb_ids.txt ]; then
+        {
+            printf 'No PDB IDs parsed from %s\\n' "$source_ids"
+            printf 'First 30 lines of input:\\n'
+            sed -n '1,30p' "$source_ids"
+        } >&2
+        exit 1
     fi
     """
 }
