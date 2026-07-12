@@ -9,8 +9,8 @@ nextflow.enable.dsl = 2
  * curated disorder regions, and a sequence-aligned 0/1 disorder mask.
  *
  * Examples:
- *   nextflow run pipeline/build_mobidb_gold_json.nf
- *   nextflow run pipeline/build_mobidb_gold_json.nf --mobidb_mode full
+ *   nextflow run pipeline/build_mobidb_gold_parquet.nf
+ *   nextflow run pipeline/build_mobidb_gold_parquet.nf --mobidb_mode full
  */
 
 params.mobidb_url = params.mobidb_url ?: "https://protein.bio.unipd.it/shared/mobidb/mobidb_gold_2022_07.mjson.gz"
@@ -18,7 +18,7 @@ params.mobidb_outdir = params.mobidb_outdir ?: "${launchDir}/data/raw/mobidb"
 params.mobidb_filename = params.mobidb_filename ?: "mobidb_gold_2022_07.mjson.gz"
 params.mobidb_dataset_outdir = params.mobidb_dataset_outdir ?: "${launchDir}/data/processed/mobidb"
 params.mobidb_dataset_filename = params.mobidb_dataset_filename ?: "mobidb_gold_2022_07.parquet"
-params.mobidb_script = params.mobidb_script ?: "${launchDir}/preprocessing/build_mobidb_gold_json.py"
+params.mobidb_script = params.mobidb_script ?: "${launchDir}/preprocessing/build_mobidb_gold_parquet.py"
 params.mobidb_mode = params.mobidb_mode ?: "dataset"
 params.mobidb_disorder_key = params.mobidb_disorder_key ?: "curated-disorder-merge"
 params.mobidb_disorder_variants = params.mobidb_disorder_variants ?: "curated=curated-disorder-merge;homology=homology-disorder-merge;prediction_priority=prediction-disorder-priority;prediction_mobidb_lite=prediction-disorder-mobidb_lite;all_priority=curated-disorder-merge,homology-disorder-merge,prediction-disorder-priority"
@@ -109,8 +109,8 @@ ln -sf "\$target" mobidb_gold.mjson.gz
     """
 }
 
-process convertMobidbGoldToJson {
-    tag "mobidb_json"
+process convertMobidbGoldToParquet {
+    tag "mobidb_parquet"
     debug true
 
     input:
@@ -120,7 +120,7 @@ process convertMobidbGoldToJson {
     val(progress_log)
 
     output:
-    path "mobidb_gold_json.manifest.tsv"
+    path "mobidb_gold_parquet.manifest.tsv"
 
     script:
     """
@@ -131,7 +131,7 @@ mkdir -p "${dataset_outdir}"
 python "${params.mobidb_script}" \\
     --input "${mobidb_archive}" \\
     --out "${dataset_outdir}/${dataset_filename}" \\
-    --manifest mobidb_gold_json.manifest.tsv \\
+    --manifest mobidb_gold_parquet.manifest.tsv \\
     --mode "${params.mobidb_mode}" \\
     --disorder-key "${params.mobidb_disorder_key}" \\
     --disorder-variants "${params.mobidb_disorder_variants}" \\
@@ -146,5 +146,5 @@ workflow {
     progress_log = "${raw_outdir}/mobidb_gold_progress.log"
 
     downloadMobidbGold(params.mobidb_url, raw_outdir, params.mobidb_filename, progress_log)
-    convertMobidbGoldToJson(downloadMobidbGold.out, dataset_outdir, params.mobidb_dataset_filename, progress_log)
+    convertMobidbGoldToParquet(downloadMobidbGold.out, dataset_outdir, params.mobidb_dataset_filename, progress_log)
 }

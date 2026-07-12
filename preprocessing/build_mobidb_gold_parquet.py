@@ -319,12 +319,12 @@ def write_parquet(
                 writer.write_table(pa.Table.from_pylist(batch, schema=schema))
                 batch.clear()
             if progress_every > 0 and count % progress_every == 0:
-                log_progress(f"[convertMobidbGoldToJson] converted {count} records", progress_log)
+                log_progress(f"[convertMobidbGoldToParquet] converted {count} records", progress_log)
         if batch:
             writer.write_table(pa.Table.from_pylist(batch, schema=schema))
     finally:
         writer.close()
-    log_progress(f"[convertMobidbGoldToJson] converted {count} records total", progress_log)
+    log_progress(f"[convertMobidbGoldToParquet] converted {count} records total", progress_log)
     return count
 
 
@@ -360,7 +360,7 @@ def convert(args: argparse.Namespace) -> int:
             for record in iter_records(in_path)
         )
 
-    log_progress(f"[convertMobidbGoldToJson] converting {in_path} to {out_path}", progress_log)
+    log_progress(f"[convertMobidbGoldToParquet] converting {in_path} to {out_path}", progress_log)
     rows = write_parquet(records, out_path, schema, progress_log=progress_log)
     write_manifest(manifest_path, in_path, out_path, args.mode, rows, disorder_variants)
     return 0
@@ -370,7 +370,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, help="MobiDB .mjson or .mjson.gz archive")
     parser.add_argument("--out", required=True, help="output .parquet path")
-    parser.add_argument("--manifest", default="mobidb_gold_json.manifest.tsv")
+    parser.add_argument("--manifest", default="mobidb_gold_parquet.manifest.tsv")
     parser.add_argument(
         "--mode",
         choices=("dataset", "full"),
