@@ -1,4 +1,4 @@
-Пайплайн скачивает датасеты из RCSB PDB, DisProt.
+Пайплайн скачивает датасеты из RCSB PDB, DisProt, MobiDB Gold.
 
 По отдельности обрабатывает каждый датасет, вычленяет нужную информацию из каждого, в каждом информация разная.
 
@@ -132,3 +132,97 @@ disorder_mask
 ```
 
 `disorder_mask` — строка той же длины, что и `sequence`: `1` означает disorder-позицию, `0` означает order/не размечено как disorder.
+
+## MobiDB Gold JSON dataset
+
+Скачать весь архив MobiDB Gold и собрать итоговый компактный JSON:
+
+```bash
+nextflow run pipeline/build_mobidb_gold_json.nf
+```
+
+Если raw-архив уже лежит в `data/raw/mobidb/mobidb_gold_2022_07.mjson.gz`, он не скачивается заново.
+
+Смотреть прогресс:
+
+```bash
+tail -f data/raw/mobidb/mobidb_gold_progress.log
+```
+
+Файлы:
+
+```text
+data/raw/mobidb/mobidb_gold_2022_07.mjson.gz
+data/raw/mobidb/mobidb_gold_progress.log
+data/processed/mobidb/mobidb_gold_2022_07.json
+```
+
+Raw `mobidb_gold_2022_07.mjson.gz` — это gzip-compressed JSON Lines: одна строка = один JSON-объект белка. В raw-записи есть `acc`, `sequence`, `length`, `organism`, `ncbi_taxon_id` и MobiDB-блоки аннотаций:
+
+```text
+curated-disorder-merge
+homology-disorder-merge
+prediction-disorder-priority
+prediction-disorder-mobidb_lite
+```
+
+В compact JSON одна запись соответствует одному белку. Основные поля результата:
+
+```text
+Uniprot_ID
+mobidb_id
+organism
+taxonomy_id
+length
+sequence
+disorder_source
+disorder_regions
+disorder_content_count
+disorder_content_fraction
+disorder_mask
+primary_disorder_variant
+disorder_masks
+```
+
+Для каждого белка сохраняется несколько вариантов disorder-разметки в поле `disorder_masks`:
+
+```text
+curated                 curated-disorder-merge
+homology                homology-disorder-merge
+prediction_priority     prediction-disorder-priority
+prediction_mobidb_lite  prediction-disorder-mobidb_lite
+all_priority            union curated + homology + prediction_priority
+```
+
+Каждый вариант содержит:
+
+```json
+"curated": {
+  "sources": ["curated-disorder-merge"],
+  "regions": [[416, 452]],
+  "content_count": 37,
+  "content_fraction": 0.064,
+  "mask": "000000...111...000"
+}
+```
+
+`regions` — 1-based inclusive координаты. `mask` — строка `0/1` длиной как `sequence`; позиции из `regions` заменяются на `1`.
+
+Top-level `disorder_mask`, `disorder_regions`, `disorder_content_count`, `disorder_content_fraction` копируют один выбранный вариант из `disorder_masks`. Какой именно — указано в `primary_disorder_variant`. По умолчанию это `curated`. Чтобы сделать основной маской `all_priority`:
+
+```bash
+nextflow run pipeline/build_mobidb_gold_json.nf \
+  --mobidb_primary_disorder_variant all_priority
+```
+
+Свой набор вариантов:
+
+```bash
+nextflow run pipeline/build_mobidb_gold_json.nf \
+  --mobidb_disorder_variants 'curated=curated-disorder-merge;prediction=prediction-disorder-priority;all=curated-disorder-merge,prediction-disorder-priority' \
+  --mobidb_primary_disorder_variant curated
+```
+
+Если нужен полный JSON со всеми исходными MobiDB-полями:
+
+Ноутбук для проверки результата: `notebooks/mobidb_gold_explore.ipynb`.
