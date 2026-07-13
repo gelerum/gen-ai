@@ -9,6 +9,13 @@ protein (unique SEQRES sequence in a file). Columns:
                                   "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY",
                                   "SOLUTION NMR"; multiple methods (hybrid
                                   structures) joined by "; "; null if unknown
+    resolution     float32       best reported resolution in angstroms (lower
+                                  is better): _refine.ls_d_res_high for
+                                  diffraction, _em_3d_reconstruction.resolution
+                                  for cryo-EM; null for NMR / when unreported
+    wilson_b       float32       Wilson B-factor estimate in A^2 from
+                                  _reflns.B_iso_Wilson_estimate (overall
+                                  thermal scale, X-ray only); null otherwise
     organism       string        source organism (gene source, not the
                                   expression host); null if unknown
     taxonomy_id    string        NCBI taxonomy id; null if unknown
@@ -41,6 +48,8 @@ SCHEMA = pa.schema(
     [
         ("pdb_id", pa.string()),
         ("method", pa.string()),
+        ("resolution", pa.float32()),
+        ("wilson_b", pa.float32()),
         ("organism", pa.string()),
         ("taxonomy_id", pa.string()),
         ("sequence", pa.string()),
@@ -70,6 +79,27 @@ def read_experiment_method(block) -> str | None:
         if m and m not in ("?", "."):
             methods.append(m)
     return "; ".join(methods) if methods else None
+
+
+def first_float(block, tags: list[str]) -> float | None:
+    """First present, parseable float across `tags` (mmCIF '?'/'.' treated as absent)."""
+    for tag in tags:
+        for row in block.find([tag]):
+            v = gemmi.cif.as_string(row.str(0)).strip()
+            if v and v not in ("?", "."):
+                try:
+                    return float(v)
+                except ValueError:
+                    continue
+    return None
+
+
+# Resolution lives in different categories per method; try them in priority order.
+RESOLUTION_TAGS = [
+    "_refine.ls_d_res_high",          # X-ray / neutron / electron crystallography
+    "_em_3d_reconstruction.resolution",  # cryo-EM
+    "_reflns.d_resolution_high",      # fallback from the reflection data
+]
 
 
 def read_source_organisms(block) -> dict[str, tuple[str, str | None]]:
@@ -132,6 +162,8 @@ class Protein:
 
     pdb_id: str
     method: str | None
+    resolution: float | None
+    wilson_b: float | None
     organism: str | None
     taxonomy_id: str | None
     sequence: str
@@ -154,6 +186,8 @@ def extract_proteins(path: str):
     try:
         block = gemmi.cif.read(path).sole_block()
         method = read_experiment_method(block)
+        resolution = first_float(block, RESOLUTION_TAGS)
+        wilson_b = first_float(block, ["_reflns.B_iso_Wilson_estimate"])
         organisms = read_source_organisms(block)
         structure = gemmi.make_structure_from_block(block)
     except Exception as e:  # noqa: BLE001
@@ -177,7 +211,9 @@ def extract_proteins(path: str):
             by_sequence[sequence].merge_copy(coverage, bfactor)
         else:
             organism, taxid = organisms.get(entity.name, (None, None)) if entity else (None, None)
-            by_sequence[sequence] = Protein(pdb_id, method, organism, taxid, sequence, coverage, bfactor)
+            by_sequence[sequence] = Protein(
+                pdb_id, method, resolution, wilson_b, organism, taxid, sequence, coverage, bfactor
+            )
 
     return list(by_sequence.values()), None
 
@@ -188,6 +224,8 @@ def proteins_to_table(proteins: list[Protein]) -> pa.Table:
         {
             "pdb_id": [p.pdb_id for p in proteins],
             "method": [p.method for p in proteins],
+            "resolution": [p.resolution for p in proteins],
+            "wilson_b": [p.wilson_b for p in proteins],
             "organism": [p.organism for p in proteins],
             "taxonomy_id": [p.taxonomy_id for p in proteins],
             "sequence": [p.sequence for p in proteins],
