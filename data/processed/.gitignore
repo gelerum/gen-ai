@@ -2,3 +2,4 @@
 /merged_protein_dataset.parquet
 /merged_protein_dataset_clean.parquet
 /merged_protein_dataset_human_esm2.parquet
+/pdb_folds_dataset.parquet
