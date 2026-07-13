@@ -1,0 +1,5 @@
+outs:
+- md5: dad28d31cfa97e86c8458c5d8850aae6
+  size: 79626440
+  hash: md5
+  path: pdb_protein_features_clean.parquet
