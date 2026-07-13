@@ -1,0 +1,5 @@
+outs:
+- md5: 6471f5626d22b8f678d1f3fc6db04cdd
+  size: 15380130
+  hash: md5
+  path: pdb_folds_dataset.parquet
