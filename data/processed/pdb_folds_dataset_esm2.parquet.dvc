@@ -1,0 +1,5 @@
+outs:
+- md5: bdcce149e88718917bc2d8e93f130d35
+  size: 162430608
+  hash: md5
+  path: pdb_folds_dataset_esm2.parquet
