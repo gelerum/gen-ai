@@ -5,6 +5,10 @@ Walks data/raw/pdb_mmCIF/**/<id>.cif.gz and writes one Parquet row per unique
 protein (unique SEQRES sequence in a file). Columns:
 
     pdb_id         string        e.g. "101m"
+    method         string        experimental method from _exptl.method, e.g.
+                                  "X-RAY DIFFRACTION", "ELECTRON MICROSCOPY",
+                                  "SOLUTION NMR"; multiple methods (hybrid
+                                  structures) joined by "; "; null if unknown
     organism       string        source organism (gene source, not the
                                   expression host); null if unknown
     taxonomy_id    string        NCBI taxonomy id; null if unknown
@@ -36,6 +40,7 @@ import pyarrow.parquet as pq
 SCHEMA = pa.schema(
     [
         ("pdb_id", pa.string()),
+        ("method", pa.string()),
         ("organism", pa.string()),
         ("taxonomy_id", pa.string()),
         ("sequence", pa.string()),
@@ -51,6 +56,20 @@ SOURCE_CATEGORIES = [
     ("_entity_src_gen.", "pdbx_gene_src_scientific_name", "pdbx_gene_src_ncbi_taxonomy_id"),
     ("_pdbx_entity_src_syn.", "organism_scientific", "ncbi_taxonomy_id"),
 ]
+
+
+def read_experiment_method(block) -> str | None:
+    """Experimental method(s) from _exptl.method (e.g. 'X-RAY DIFFRACTION').
+
+    Handles both the single-value form and the loop_ form used by hybrid
+    structures; multiple methods are joined by '; '. Returns None if absent.
+    """
+    methods = []
+    for row in block.find(["_exptl.method"]):
+        m = gemmi.cif.as_string(row.str(0)).strip()
+        if m and m not in ("?", "."):
+            methods.append(m)
+    return "; ".join(methods) if methods else None
 
 
 def read_source_organisms(block) -> dict[str, tuple[str, str | None]]:
@@ -112,6 +131,7 @@ class Protein:
     """One unique protein sequence in a structure, with its per-residue arrays."""
 
     pdb_id: str
+    method: str | None
     organism: str | None
     taxonomy_id: str | None
     sequence: str
@@ -133,6 +153,7 @@ def extract_proteins(path: str):
     pdb_id = Path(path).name.split(".")[0]
     try:
         block = gemmi.cif.read(path).sole_block()
+        method = read_experiment_method(block)
         organisms = read_source_organisms(block)
         structure = gemmi.make_structure_from_block(block)
     except Exception as e:  # noqa: BLE001
@@ -156,7 +177,7 @@ def extract_proteins(path: str):
             by_sequence[sequence].merge_copy(coverage, bfactor)
         else:
             organism, taxid = organisms.get(entity.name, (None, None)) if entity else (None, None)
-            by_sequence[sequence] = Protein(pdb_id, organism, taxid, sequence, coverage, bfactor)
+            by_sequence[sequence] = Protein(pdb_id, method, organism, taxid, sequence, coverage, bfactor)
 
     return list(by_sequence.values()), None
 
@@ -166,6 +187,7 @@ def proteins_to_table(proteins: list[Protein]) -> pa.Table:
     return pa.table(
         {
             "pdb_id": [p.pdb_id for p in proteins],
+            "method": [p.method for p in proteins],
             "organism": [p.organism for p in proteins],
             "taxonomy_id": [p.taxonomy_id for p in proteins],
             "sequence": [p.sequence for p in proteins],
