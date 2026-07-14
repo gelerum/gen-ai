@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 
 params.weights_dir = "${launchDir}/weights"
 
-process DOWNLOAD_WEIGHTS {
+process download_weights {
 
     publishDir params.weights_dir, mode: 'copy'
 
@@ -25,5 +25,5 @@ process DOWNLOAD_WEIGHTS {
 }
 
 workflow {
-    DOWNLOAD_WEIGHTS()
+    download_weights()
 }
