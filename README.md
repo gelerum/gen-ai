@@ -255,3 +255,56 @@ bfactor        список float32 длиной как sequence; есть у RC
 ```
 
 Каждый источник даёт только свои признаки, остальные колонки заполняются `null`.
+
+## Аннотации UniProt
+
+Добавить к объединённому датасету колонки `keywords` и `go` из UniProt.
+
+Сначала нужно воспроизводимо получить сами исходники. Оба пайплайна кэшируются Nextflow, поэтому повторный запуск бесплатный:
+
+```bash
+nextflow run pipeline/download_uniprot.nf
+nextflow run pipeline/download_sifts.nf
+```
+
+`download_uniprot.nf` качает релиз SwissProt (`uniprot_sprot.dat.gz`, ~700 МБ) в `data/raw/uniprot` и разбирает его через `preprocessing/dat_to_parquet.py`. `download_sifts.nf` качает маппинг SIFTS PDB↔UniProt в `data/raw/sifts`. Результаты:
+
+```text
+data/processed/uniprot/uniprot_sprot.parquet
+data/raw/sifts/pdb_chain_uniprot.csv.gz
+```
+
+Затем сам шаг аннотации:
+
+```bash
+nextflow run pipeline/add_uniprot_info_to_ds.nf
+```
+
+Результат кладётся в `data/processed/merged_dataset_with_uniprot.parquet` — это исходный датасет плюс две колонки:
+
+```text
+keywords  список строк; ключевые слова UniProt
+go        список структур {id, term, evidence}; GO-аннотации
+```
+
+Источники по-разному связываются с UniProt:
+
+* **disprot / mobidb** — `id` уже является UniProt ACC, join напрямую.
+* **rcsb-pdb** — `id` это PDB ID, который резолвится через SIFTS.
+
+Важная деталь по rcsb-pdb: в одной PDB-записи обычно несколько цепочек с **разными** ACC, поэтому наивный join по одному только PDB ID даёт декартово произведение и раздувает rcsb-pdb примерно в 13 раз. Скрипт выбирает одну из двух стратегий в зависимости от того, есть ли в датасете колонка `chains`:
+
+* **`chains` есть — точный join.** SIFTS ключуется по `(PDB, CHAIN)`, а `chains` хранит auth-идентификаторы цепочек, схлопнутых в строку, поэтому каждая строка резолвится в свой ACC.
+* **`chains` нет — фолбэк.** Аннотации агрегируются на уровне PDB-записи: все строки получают объединение keywords и GO всех её ACC. У гетеромерного комплекса (`4hhb`: альфа + бета) аннотации субъединиц при этом размазываются по обеим строкам.
+
+Число строк сохраняется в обоих случаях — скрипт падает, если это не так. Колонку `chains` даёт `extract_pdb_features.py`; чтобы она появилась в данных, нужно перегенерировать `pdb_protein_features.parquet` и пересобрать объединённый датасет.
+
+Покрытие аннотациями на текущем релизе SwissProt (фолбэк-режим):
+
+```text
+disprot      3 327 строк |    2 867 аннотировано (86.2%)
+mobidb   1 508 849 строк |  542 056 аннотировано (35.9%)
+rcsb-pdb   546 126 строк |  456 446 аннотировано (83.6%)
+```
+
+Низкое покрытие MobiDB объясняется тем, что мы качаем только SwissProt (575 503 проверенных записи), а MobiDB во многом опирается на непроверенный TrEMBL.

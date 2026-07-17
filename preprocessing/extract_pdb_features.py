@@ -47,6 +47,10 @@ import pyarrow.parquet as pq
 SCHEMA = pa.schema(
     [
         ("pdb_id", pa.string()),
+        # auth chain ids that contributed to this row; same ids SIFTS keys on, so
+        # (pdb_id, chains) resolves to a UniProt accession. Same-sequence chains
+        # (homodimer copies) are folded into one row and list all their ids here.
+        ("chains", pa.list_(pa.string())),
         ("method", pa.string()),
         ("resolution", pa.float32()),
         ("wilson_b", pa.float32()),
@@ -161,6 +165,7 @@ class Protein:
     """One unique protein sequence in a structure, with its per-residue arrays."""
 
     pdb_id: str
+    chains: list[str]
     method: str | None
     resolution: float | None
     wilson_b: float | None
@@ -170,8 +175,10 @@ class Protein:
     coverage: list[int]
     bfactor: list[float | None]
 
-    def merge_copy(self, coverage, bfactor) -> None:
+    def merge_copy(self, chain_name, coverage, bfactor) -> None:
         """Fold in another chain with the same sequence (a homodimer copy)."""
+        self.chains.append(chain_name)
+
         for i, covered in enumerate(coverage):
             if covered == 1:  # residue is present in this copy
                 self.coverage[i] = 1
@@ -208,11 +215,11 @@ def extract_proteins(path: str):
             continue
         sequence, coverage, bfactor = arrays
         if sequence in by_sequence:
-            by_sequence[sequence].merge_copy(coverage, bfactor)
+            by_sequence[sequence].merge_copy(chain.name, coverage, bfactor)
         else:
             organism, taxid = organisms.get(entity.name, (None, None)) if entity else (None, None)
             by_sequence[sequence] = Protein(
-                pdb_id, method, resolution, wilson_b, organism, taxid, sequence, coverage, bfactor
+                pdb_id, [chain.name], method, resolution, wilson_b, organism, taxid, sequence, coverage, bfactor
             )
 
     return list(by_sequence.values()), None
@@ -223,6 +230,7 @@ def proteins_to_table(proteins: list[Protein]) -> pa.Table:
     return pa.table(
         {
             "pdb_id": [p.pdb_id for p in proteins],
+            "chains": pa.array([p.chains for p in proteins], type=pa.list_(pa.string())),
             "method": [p.method for p in proteins],
             "resolution": [p.resolution for p in proteins],
             "wilson_b": [p.wilson_b for p in proteins],

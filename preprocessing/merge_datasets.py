@@ -35,6 +35,10 @@ SCHEMA = pa.schema(
     [
         ("source", pa.string()),
         ("id", pa.string()),
+        # RCSB PDB only: the auth chain ids behind this row. With `id` (the PDB
+        # entry) they form the key SIFTS maps to a UniProt accession; disprot and
+        # mobidb carry an accession in `id` already, so theirs is null.
+        ("chains", pa.list_(pa.string())),
         ("organism", pa.string()),
         ("taxonomy_id", pa.string()),
         ("sequence", pa.string()),
@@ -67,6 +71,7 @@ def normalize(table: pa.Table, source: str, id_column: str) -> pa.Table:
         {
             "source": pa.array([source] * n, pa.string()),
             "id": table.column(id_column).cast(pa.string()),
+            "chains": column("chains", pa.list_(pa.string())),
             "organism": column("organism", pa.string()),
             "taxonomy_id": column("taxonomy_id", pa.string()),
             "sequence": column("sequence", pa.string()),
