@@ -1,0 +1,5 @@
+outs:
+- md5: 63bb26337a6d5e8361f8e6c0c82418a0
+  size: 3673788995
+  hash: md5
+  path: merged_dataset_with_uniprot_esm2.parquet
