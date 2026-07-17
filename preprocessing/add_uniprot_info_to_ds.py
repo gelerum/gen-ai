@@ -100,23 +100,36 @@ def aggregate_by_pdb(mapping, uniprot):
     )
 
 
-def annotate_by_chain(by_pdb, mapping, uniprot):
+def chain_to_accession(sifts):
+    """One accession per (pdb_id, chain), keyed for lookup.
+
+    SIFTS is residue-level, so a chain spanning two proteins -- a fusion
+    construct such as 10dv chain A -- has one row per segment (~1% of chains).
+    The accession covering the longest stretch of the chain wins, since that is
+    the protein the row's sequence mostly is.
+    """
+    spans = sifts.assign(span=sifts["sp_end"] - sifts["sp_beg"])
+    spans = spans.sort_values("span", ascending=False)
+    dominant = spans.drop_duplicates(subset=["pdb_id", "chain"])
+
+    return dominant.set_index(["pdb_id", "chain"])["accession"]
+
+
+def annotate_by_chain(by_pdb, sifts, uniprot):
     """Exact route: resolve each row's own chains to one accession via SIFTS.
 
     `chains` lists the auth chain ids folded into the row, which is exactly what
-    SIFTS keys on. All chains of a row hold the same sequence and so resolve to
+    SIFTS keys on. All chains of a row carry the same sequence and so resolve to
     the same accession; the first non-null one is taken.
     """
+    lookup = chain_to_accession(sifts)
+
     exploded = by_pdb[["id", "chains"]].explode("chains")
-    exploded = exploded.merge(
-        mapping,
-        left_on=["id", "chains"],
-        right_on=["pdb_id", "chain"],
-        how="left",
-    ).set_index(exploded.index)
+    keys = pd.MultiIndex.from_arrays([exploded["id"], exploded["chains"]])
+    exploded = exploded.assign(accession=lookup.reindex(keys).to_numpy())
 
     # groupby.first() skips nulls, so a row keeps its accession even when some of
-    # its chains are absent from SIFTS.
+    # its chains are missing from SIFTS.
     accession = exploded.groupby(level=0)["accession"].first()
 
     annotated = by_pdb.assign(accession=accession).merge(uniprot, on="accession", how="left")
@@ -150,11 +163,17 @@ def main():
         args.sifts,
         compression="gzip",
         comment="#",
-        usecols=["PDB", "CHAIN", "SP_PRIMARY"],
+        usecols=["PDB", "CHAIN", "SP_PRIMARY", "SP_BEG", "SP_END"],
         low_memory=False,
     )
     sifts = sifts.drop_duplicates().rename(
-        columns={"PDB": "pdb_id", "CHAIN": "chain", "SP_PRIMARY": "accession"}
+        columns={
+            "PDB": "pdb_id",
+            "CHAIN": "chain",
+            "SP_PRIMARY": "accession",
+            "SP_BEG": "sp_beg",
+            "SP_END": "sp_end",
+        }
     )
     log(f"sifts: {len(sifts):,} rows over {sifts['pdb_id'].nunique():,} PDB entries")
 

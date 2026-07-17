@@ -1,0 +1,5 @@
+outs:
+- md5: 03196bb35a6e51357a5f66a66adf2398
+  size: 115455304
+  hash: md5
+  path: uniprot_sprot.parquet
