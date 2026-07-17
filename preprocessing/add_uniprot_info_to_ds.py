@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+from preprocessing.go import is_transport_protein
 
 import pandas as pd
 
@@ -31,7 +32,5 @@ merged1 = df1.merge(uniprot, on="id", how="left")
 merged = pd.concat([merged1, merged2], ignore_index=True)
 
 output_path.parent.mkdir(parents=True,exist_ok=True,)
-
-merged["transport_terms"] = merged["go"].apply(transport_go_terms)
 
 merged.to_parquet(output_path, compression="zstd", index=False,)
