@@ -5,3 +5,4 @@
 /pdb_folds_dataset.parquet
 /pdb_protein_features_clean.parquet
 /pdb_folds_dataset_esm2.parquet
+/merged_dataset_with_uniprot.parquet
