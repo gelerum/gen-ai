@@ -24,3 +24,4 @@ dag*.html
 
 .dvc/config.local
 **/__pycache__
+**/catboost_info
